@@ -1,9 +1,11 @@
 /* global SillyTavern */
 import { createRoot } from 'react-dom/client';
 import Gallery from './Gallery';
+import GroupGallery from './GroupGallery';
 
 const EXTENSION_NAME = 'SillyTavern-LocalImage';
 const BUTTON_ID = 'local_image_button';
+const GROUP_BUTTON_ID = 'local_image_group_button';
 
 let galleryRoot = null;
 let galleryContainer = null;
@@ -85,6 +87,52 @@ function getCurrentPersonaName() {
     const context = SillyTavern.getContext();
     // ST stores persona name in name1
     return context.name1 || null;
+}
+
+/**
+ * Check if currently in a group chat
+ * @returns {boolean} True if in group chat
+ */
+function isGroupChat() {
+    const context = SillyTavern.getContext();
+    return context.groupId !== null && context.groupId !== undefined;
+}
+
+/**
+ * Get current group info
+ * @returns {Object|null} Group object with id, name, members, or null
+ */
+function getCurrentGroup() {
+    const context = SillyTavern.getContext();
+    if (!isGroupChat()) return null;
+
+    const group = context.groups?.find(g => g.id === context.groupId);
+    if (!group) return null;
+
+    return {
+        id: group.id,
+        name: group.name || `Group ${group.id}`,
+        members: group.members || []
+    };
+}
+
+/**
+ * Get character names for group members
+ * @param {Array} memberIds - Array of member avatar identifiers
+ * @returns {Array} Array of character names
+ */
+function getGroupMemberNames(memberIds) {
+    const context = SillyTavern.getContext();
+    const names = [];
+
+    for (const memberId of memberIds) {
+        const char = context.characters.find(c => c.avatar === memberId);
+        if (char) {
+            names.push(char.name);
+        }
+    }
+
+    return names;
 }
 
 /**
@@ -510,6 +558,66 @@ function closeGallery() {
 }
 
 /**
+ * Open the group gallery modal
+ */
+function openGroupGallery() {
+    const group = getCurrentGroup();
+    if (!group) {
+        console.warn(`[${EXTENSION_NAME}] No group selected`);
+        return;
+    }
+
+    // Create container if not exists
+    if (!galleryContainer) {
+        galleryContainer = document.createElement('div');
+        galleryContainer.id = 'local-image-gallery-root';
+        document.body.appendChild(galleryContainer);
+        galleryRoot = createRoot(galleryContainer);
+    }
+
+    const memberNames = getGroupMemberNames(group.members);
+
+    // Gather all member assignments
+    const memberAssignments = {};
+    for (const memberName of memberNames) {
+        memberAssignments[memberName] = getCharacterAssignments(memberName);
+    }
+
+    // Group assignments use the group name as the key
+    const groupAssignments = getCharacterAssignments(group.name);
+    const groupSettings = getCharacterSettings(group.name);
+
+    // Render group gallery
+    galleryRoot.render(
+        <GroupGallery
+            groupName={group.name}
+            groupId={group.id}
+            memberNames={memberNames}
+            memberAssignments={memberAssignments}
+            groupAssignments={groupAssignments}
+            groupSettings={groupSettings}
+            onClose={closeGallery}
+            onAssignGroup={(name, path, description) => {
+                assignImage(group.name, name, path, description);
+                openGroupGallery();
+            }}
+            onUnassignGroup={(name) => {
+                unassignImage(group.name, name);
+                openGroupGallery();
+            }}
+            onUpdateGroupDescription={(name, description) => {
+                updateImageDescription(group.name, name, description);
+                openGroupGallery();
+            }}
+            onSaveGroupSettings={(settings) => {
+                saveCharacterSettings(group.name, settings);
+                openGroupGallery();
+            }}
+        />
+    );
+}
+
+/**
  * Add the gallery button to character panel
  */
 function addGalleryButton() {
@@ -613,14 +721,83 @@ function removePersonaGalleryButton() {
 }
 
 /**
- * Handle character selection change
+ * Add the gallery button for group chats
  */
-function onCharacterSelected() {
-    const charName = getCurrentCharacterName();
-    if (charName) {
-        addGalleryButton();
+function addGroupGalleryButton() {
+    // Remove existing button if any
+    const existingButton = document.getElementById(GROUP_BUTTON_ID);
+    if (existingButton) {
+        existingButton.remove();
+    }
+
+    // Only add in group chats
+    if (!isGroupChat()) return;
+
+    // Find the group controls - look for the group actions area
+    const groupControls = document.querySelector('#rm_group_chats_block .inline-drawer-content');
+    if (!groupControls) {
+        // Try alternate location - top of group panel
+        const groupPanel = document.querySelector('#rm_group_chats_block');
+        if (!groupPanel) {
+            setTimeout(addGroupGalleryButton, 1000);
+            return;
+        }
+    }
+
+    // Find a good place to insert - after group name or in actions area
+    const groupActionsBlock = document.querySelector('.group_actions_block') ||
+                               document.querySelector('#rm_group_chats_block .inline-drawer-header');
+
+    if (!groupActionsBlock) {
+        setTimeout(addGroupGalleryButton, 1000);
+        return;
+    }
+
+    // Create the button
+    const button = document.createElement('div');
+    button.id = GROUP_BUTTON_ID;
+    button.className = 'menu_button fa-solid fa-images';
+    button.title = 'Group Images';
+    button.setAttribute('data-i18n', '[title]Group Images');
+
+    button.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openGroupGallery();
+    });
+
+    // Add to group controls
+    groupActionsBlock.appendChild(button);
+
+    console.log(`[${EXTENSION_NAME}] Group gallery button added`);
+}
+
+/**
+ * Remove the group gallery button
+ */
+function removeGroupGalleryButton() {
+    const button = document.getElementById(GROUP_BUTTON_ID);
+    if (button) {
+        button.remove();
+    }
+}
+
+/**
+ * Handle character/group selection change
+ */
+function onChatChanged() {
+    // Handle group chats
+    if (isGroupChat()) {
+        removeGalleryButton(); // Remove single-character button
+        addGroupGalleryButton();
     } else {
-        removeGalleryButton();
+        removeGroupGalleryButton();
+        const charName = getCurrentCharacterName();
+        if (charName) {
+            addGalleryButton();
+        } else {
+            removeGalleryButton();
+        }
     }
 }
 
@@ -637,7 +814,7 @@ function init() {
     // Subscribe to character selection events
     if (context.eventSource && context.eventTypes) {
         context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => {
-            onCharacterSelected();
+            onChatChanged();
             // Process existing messages when chat loads
             setTimeout(processAllMessages, 500);
         });
@@ -693,20 +870,48 @@ function init() {
         // Listen for prompt generation to inject image list
         if (context.eventTypes.GENERATE_BEFORE_COMBINE_PROMPTS) {
             context.eventSource.on(context.eventTypes.GENERATE_BEFORE_COMBINE_PROMPTS, () => {
-                const charName = getCurrentCharacterName();
-                if (!charName) return;
+                const prompts = [];
 
-                const charSettings = getCharacterSettings(charName);
-                if (!charSettings.injectPrompt) return;
+                // Handle group chats
+                if (isGroupChat()) {
+                    const group = getCurrentGroup();
+                    if (group) {
+                        const groupSettings = getCharacterSettings(group.name);
+                        if (groupSettings.injectPrompt) {
+                            const groupPrompt = generateImageListPrompt(group.name);
+                            if (groupPrompt) prompts.push(groupPrompt);
+                        }
 
-                const prompt = generateImageListPrompt(charName);
-                if (!prompt) return;
+                        // Also inject member image lists if they have injectPrompt enabled
+                        const memberNames = getGroupMemberNames(group.members);
+                        for (const memberName of memberNames) {
+                            const memberSettings = getCharacterSettings(memberName);
+                            if (memberSettings.injectPrompt) {
+                                const memberPrompt = generateImageListPrompt(memberName);
+                                if (memberPrompt) prompts.push(memberPrompt);
+                            }
+                        }
+                    }
+                } else {
+                    // Single character chat
+                    const charName = getCurrentCharacterName();
+                    if (charName) {
+                        const charSettings = getCharacterSettings(charName);
+                        if (charSettings.injectPrompt) {
+                            const prompt = generateImageListPrompt(charName);
+                            if (prompt) prompts.push(prompt);
+                        }
+                    }
+                }
+
+                if (prompts.length === 0) return;
 
                 // Inject into extension prompt (Author's Note style)
+                const combinedPrompt = prompts.join('\n\n');
                 const extensionPrompt = context.extensionPrompts?.['LocalImage'];
                 if (extensionPrompt === undefined) {
                     // Register our extension prompt
-                    context.setExtensionPrompt(EXTENSION_NAME, prompt, 1, 0); // position 1 = after main prompt, depth 0
+                    context.setExtensionPrompt(EXTENSION_NAME, combinedPrompt, 1, 0); // position 1 = after main prompt, depth 0
                 }
             });
         }
@@ -736,11 +941,9 @@ function init() {
         }
     }
 
-    // Add button if character already selected
+    // Add buttons if chat already active
     setTimeout(() => {
-        if (getCurrentCharacterName()) {
-            addGalleryButton();
-        }
+        onChatChanged();
         // Always try to add persona button
         addPersonaGalleryButton();
     }, 100);

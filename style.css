@@ -467,10 +467,169 @@
 }
 
 /* Gallery button in character panel */
-#local_image_button {
+#local_image_button,
+#local_image_group_button {
     cursor: pointer;
 }
 
-#local_image_button:hover {
+#local_image_button:hover,
+#local_image_group_button:hover {
     opacity: 0.8;
+}
+
+/* Group Gallery Specific Styles */
+.local-image-modal-large {
+    max-width: 1100px;
+}
+
+.group-gallery-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Group Section */
+.group-section {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.group-section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 15px;
+    background: rgba(0, 0, 0, 0.3);
+    color: var(--SmartThemeBodyColor, #fff);
+    font-weight: 600;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, #333);
+}
+
+.group-section-header i {
+    color: var(--SmartThemeQuoteColor, #4a9eff);
+}
+
+.section-count {
+    margin-left: auto;
+    font-size: 0.85em;
+    color: #4a9eff;
+    font-weight: normal;
+}
+
+.group-section-content {
+    padding: 15px;
+}
+
+/* Group Members List */
+.group-members-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* Member Section (collapsible) */
+.group-member-section {
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.group-member-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 15px;
+    background: rgba(255, 255, 255, 0.05);
+    cursor: pointer;
+    color: var(--SmartThemeBodyColor, #fff);
+    transition: background 0.15s;
+}
+
+.group-member-header:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.group-member-header i {
+    font-size: 0.8em;
+    opacity: 0.6;
+    width: 12px;
+}
+
+.member-name {
+    font-weight: 500;
+}
+
+.member-count {
+    margin-left: auto;
+    font-size: 0.8em;
+    color: #4a9eff;
+}
+
+.group-member-content {
+    padding: 10px 15px;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+/* Smaller grid for member images */
+.local-image-grid-small {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 8px;
+}
+
+.local-image-item-small {
+    aspect-ratio: 1;
+}
+
+.local-image-item-small .assignment-label {
+    padding: 2px 4px;
+    font-size: 9px;
+}
+
+.local-image-item-small .assignment-name {
+    font-size: 9px;
+}
+
+/* Empty state for member sections */
+.local-image-empty-small {
+    padding: 20px;
+    text-align: center;
+    color: #666;
+    font-size: 0.9em;
+}
+
+/* Read-only info in options menu */
+.options-menu-info {
+    padding: 10px 15px;
+    color: #888;
+    font-size: 0.85em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-top: 1px solid var(--SmartThemeBorderColor, #333);
+    margin-top: 5px;
+}
+
+.options-menu-info i {
+    color: var(--SmartThemeQuoteColor, #4a9eff);
+}
+
+/* Mobile responsive for group gallery */
+@media (max-width: 768px) {
+    .local-image-modal-large {
+        max-width: 95%;
+    }
+
+    .group-section-header {
+        padding: 10px 12px;
+        font-size: 0.95em;
+    }
+
+    .group-member-header {
+        padding: 8px 12px;
+    }
+
+    .local-image-grid-small {
+        grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+        gap: 6px;
+    }
 }
