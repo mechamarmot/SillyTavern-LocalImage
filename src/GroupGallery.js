@@ -11,12 +11,82 @@ function getRequestHeaders() {
 /**
  * Settings Panel Component for Group
  */
-function GroupSettingsPanel({ groupName, settings, onSave }) {
+function GroupSettingsPanel({ groupName, settings, customPrompts, assignments, onSave, onAddPrompt, onEditPrompt, onDeletePrompt }) {
     const [injectPrompt, setInjectPrompt] = useState(settings.injectPrompt || false);
-    const [customPrefix, setCustomPrefix] = useState(settings.customPrefix || '');
+    const [selectedPromptId, setSelectedPromptId] = useState(settings.selectedPromptId || 'default');
+    const [showPromptEditor, setShowPromptEditor] = useState(false);
+    const [editingPrompt, setEditingPrompt] = useState(null);
+    const [promptName, setPromptName] = useState('');
+    const [promptTemplate, setPromptTemplate] = useState('');
 
-    const handleSave = () => {
-        onSave({ injectPrompt, customPrefix });
+    const defaultTemplate = `Available images for ${groupName} (use ::img ${groupName} name:: to display):`;
+
+    // Generate the full preview with image list
+    const generatePreview = (template) => {
+        const prefix = template.replace(/\{\{char\}\}/gi, groupName);
+        const imageNames = Object.keys(assignments || {});
+        if (imageNames.length === 0) {
+            return `[${prefix}\n(no images assigned yet)]`;
+        }
+        const lines = imageNames.map(name => {
+            const assignment = assignments[name];
+            const desc = typeof assignment === 'object' ? assignment.description : '';
+            return desc ? `- ${name}: ${desc}` : `- ${name}`;
+        });
+        return `[${prefix}\n${lines.join('\n')}]`;
+    };
+
+    const handlePromptChange = (e) => {
+        const newId = e.target.value;
+        setSelectedPromptId(newId);
+        onSave({ injectPrompt, selectedPromptId: newId });
+    };
+
+    const handleAddNew = () => {
+        setEditingPrompt(null);
+        setPromptName('');
+        setPromptTemplate(defaultTemplate);
+        setShowPromptEditor(true);
+    };
+
+    const handleEdit = () => {
+        if (selectedPromptId === 'default') return;
+        const prompt = customPrompts.find(p => p.id === selectedPromptId);
+        if (prompt) {
+            setEditingPrompt(prompt);
+            setPromptName(prompt.name);
+            setPromptTemplate(prompt.template);
+            setShowPromptEditor(true);
+        }
+    };
+
+    const handleDelete = () => {
+        if (selectedPromptId === 'default') return;
+        if (confirm('Delete this prompt template?')) {
+            onDeletePrompt(selectedPromptId);
+            setSelectedPromptId('default');
+            onSave({ injectPrompt, selectedPromptId: 'default' });
+        }
+    };
+
+    const handleSavePrompt = () => {
+        if (!promptName.trim() || !promptTemplate.trim()) return;
+
+        if (editingPrompt) {
+            onEditPrompt(editingPrompt.id, promptName.trim(), promptTemplate.trim());
+        } else {
+            const newId = onAddPrompt(promptName.trim(), promptTemplate.trim());
+            setSelectedPromptId(newId);
+            onSave({ injectPrompt, selectedPromptId: newId });
+        }
+        setShowPromptEditor(false);
+    };
+
+    const handleCancelEdit = () => {
+        setShowPromptEditor(false);
+        setEditingPrompt(null);
+        setPromptName('');
+        setPromptTemplate('');
     };
 
     return (
@@ -28,23 +98,88 @@ function GroupSettingsPanel({ groupName, settings, onSave }) {
                         checked={injectPrompt}
                         onChange={(e) => {
                             setInjectPrompt(e.target.checked);
-                            setTimeout(() => onSave({ injectPrompt: e.target.checked, customPrefix }), 0);
+                            onSave({ injectPrompt: e.target.checked, selectedPromptId });
                         }}
                     />
                     <span>Inject image list into prompt</span>
                 </label>
             </div>
-            {injectPrompt && (
+            {injectPrompt && !showPromptEditor && (
                 <div className="settings-row">
-                    <label className="settings-label">Custom prefix (optional):</label>
+                    <label className="settings-label">Prompt template:</label>
+                    <div className="settings-prompt-row">
+                        <select
+                            className="settings-select"
+                            value={selectedPromptId}
+                            onChange={handlePromptChange}
+                        >
+                            <option value="default">Default</option>
+                            {customPrompts.map(p => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
+                        <button className="settings-btn" onClick={handleAddNew} title="Add new">
+                            <i className="fa-solid fa-plus"></i>
+                        </button>
+                        <button
+                            className="settings-btn"
+                            onClick={handleEdit}
+                            disabled={selectedPromptId === 'default'}
+                            title="Edit"
+                        >
+                            <i className="fa-solid fa-pen"></i>
+                        </button>
+                        <button
+                            className="settings-btn settings-btn-danger"
+                            onClick={handleDelete}
+                            disabled={selectedPromptId === 'default'}
+                            title="Delete"
+                        >
+                            <i className="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                    <div className="settings-preview">
+                        <span className="settings-preview-label">Preview (what gets injected into prompt):</span>
+                        <pre className="settings-preview-text">
+                            {generatePreview(
+                                selectedPromptId === 'default'
+                                    ? defaultTemplate
+                                    : customPrompts.find(p => p.id === selectedPromptId)?.template || defaultTemplate
+                            )}
+                        </pre>
+                    </div>
+                </div>
+            )}
+            {injectPrompt && showPromptEditor && (
+                <div className="settings-row settings-editor">
+                    <label className="settings-label">
+                        {editingPrompt ? 'Edit Prompt Template' : 'New Prompt Template'}
+                    </label>
                     <input
                         type="text"
                         className="settings-input"
-                        value={customPrefix}
-                        onChange={(e) => setCustomPrefix(e.target.value)}
-                        onBlur={handleSave}
-                        placeholder={`Available images for ${groupName}:`}
+                        value={promptName}
+                        onChange={(e) => setPromptName(e.target.value)}
+                        placeholder="Template name"
                     />
+                    <textarea
+                        className="settings-textarea"
+                        value={promptTemplate}
+                        onChange={(e) => setPromptTemplate(e.target.value)}
+                        placeholder="Template text (use {{char}} for group name)"
+                        rows={3}
+                    />
+                    <div className="settings-editor-hint">
+                        Use <code>{'{{char}}'}</code> to insert the group name
+                    </div>
+                    <div className="settings-editor-actions">
+                        <button className="settings-btn settings-btn-primary" onClick={handleSavePrompt}>
+                            Save
+                        </button>
+                        <button className="settings-btn" onClick={handleCancelEdit}>
+                            Cancel
+                        </button>
+                    </div>
                 </div>
             )}
         </div>
@@ -237,11 +372,15 @@ function GroupGallery({
     memberAssignments,
     groupAssignments,
     groupSettings,
+    customPrompts,
     onClose,
     onAssignGroup,
     onUnassignGroup,
     onUpdateGroupDescription,
-    onSaveGroupSettings
+    onSaveGroupSettings,
+    onAddPrompt,
+    onEditPrompt,
+    onDeletePrompt
 }) {
     const [groupImages, setGroupImages] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -595,7 +734,12 @@ function GroupGallery({
                     <GroupSettingsPanel
                         groupName={groupName}
                         settings={groupSettings}
+                        customPrompts={customPrompts}
+                        assignments={groupAssignments}
                         onSave={onSaveGroupSettings}
+                        onAddPrompt={onAddPrompt}
+                        onEditPrompt={onEditPrompt}
+                        onDeletePrompt={onDeletePrompt}
                     />
                 )}
 

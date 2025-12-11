@@ -18,8 +18,10 @@ function initSettings() {
         enabled: true,
         // assignments: { characterName: { imageName: { path: "...", description: "..." } } }
         assignments: {},
-        // characterSettings: { characterName: { injectPrompt: true, customPrefix: "..." } }
+        // characterSettings: { characterName: { injectPrompt: true, selectedPromptId: "default" } }
         characterSettings: {},
+        // customPrompts: [{ id: "uuid", name: "My Prompt", template: "..." }]
+        customPrompts: [],
     };
 
     if (!context.extensionSettings[EXTENSION_NAME]) {
@@ -110,6 +112,13 @@ function getCurrentGroup() {
     const group = context.groups?.find(g => g.id === context.groupId);
     if (!group) return null;
 
+    console.log(`[${EXTENSION_NAME}] getCurrentGroup - raw group object:`, JSON.stringify({
+        id: group.id,
+        name: group.name,
+        chat_id: group.chat_id,
+        keys: Object.keys(group)
+    }));
+
     return {
         id: group.id,
         name: group.name || `Group ${group.id}`,
@@ -137,11 +146,24 @@ function getGroupMemberNames(memberIds) {
 }
 
 /**
- * Resolve entity name from tag (handles {{user}}, {{char}} macros)
+ * Resolve entity name from tag (handles {{user}}, {{char}}, {{group}} macros)
+ * Uses ST's built-in macro system if available
  * @param {string} entityName - Name from tag (could be actual name or macro)
  * @returns {string} Resolved entity name
  */
 function resolveEntityName(entityName) {
+    const context = SillyTavern.getContext();
+
+    // Try to use ST's built-in macro replacement
+    if (context.substituteParams) {
+        const resolved = context.substituteParams(entityName);
+        console.log(`[${EXTENSION_NAME}] resolveEntityName via ST: "${entityName}" -> "${resolved}"`);
+        if (resolved !== entityName) {
+            return resolved;
+        }
+    }
+
+    // Fallback to manual resolution
     const lowerName = entityName.toLowerCase();
 
     // Handle {{user}} macro
@@ -152,6 +174,12 @@ function resolveEntityName(entityName) {
     // Handle {{char}} macro
     if (lowerName === '{{char}}' || lowerName === 'char') {
         return getCurrentCharacterName() || entityName;
+    }
+
+    // Handle {{group}} macro
+    if (lowerName === '{{group}}' || lowerName === 'group') {
+        const group = getCurrentGroup();
+        return group ? group.name : entityName;
     }
 
     return entityName;
@@ -259,10 +287,100 @@ function unassignImage(charName, imageName) {
  */
 function getImagePath(charName, imageName) {
     const assignments = getCharacterAssignments(charName);
+    console.log(`[${EXTENSION_NAME}] getImagePath - looking for entity="${charName}", image="${imageName}", assignments:`, Object.keys(assignments));
     const assignment = assignments[imageName];
-    if (!assignment) return '';
+    if (!assignment) {
+        console.log(`[${EXTENSION_NAME}] getImagePath - image "${imageName}" not found for "${charName}"`);
+        return '';
+    }
     // Handle both old format (string) and new format (object)
     return typeof assignment === 'string' ? assignment : assignment.path || '';
+}
+
+/**
+ * Get the default prompt template
+ * @param {string} charName - Character name
+ * @returns {string} Default template
+ */
+function getDefaultPromptTemplate(charName) {
+    return `Available images for ${charName} (use ::img ${charName} name:: to display):`;
+}
+
+/**
+ * Get all custom prompts
+ * @returns {Array} Array of custom prompt objects
+ */
+function getCustomPrompts() {
+    const settings = getSettings();
+    return settings.customPrompts || [];
+}
+
+/**
+ * Add a custom prompt
+ * @param {string} name - Prompt name
+ * @param {string} template - Prompt template
+ * @returns {string} The new prompt's ID
+ */
+function addCustomPrompt(name, template) {
+    const context = SillyTavern.getContext();
+    const settings = context.extensionSettings[EXTENSION_NAME];
+
+    if (!settings.customPrompts) {
+        settings.customPrompts = [];
+    }
+
+    const id = 'prompt_' + Date.now();
+    settings.customPrompts.push({ id, name, template });
+    saveSettings();
+    return id;
+}
+
+/**
+ * Update a custom prompt
+ * @param {string} id - Prompt ID
+ * @param {string} name - New name
+ * @param {string} template - New template
+ */
+function updateCustomPrompt(id, name, template) {
+    const context = SillyTavern.getContext();
+    const settings = context.extensionSettings[EXTENSION_NAME];
+
+    const prompt = settings.customPrompts?.find(p => p.id === id);
+    if (prompt) {
+        prompt.name = name;
+        prompt.template = template;
+        saveSettings();
+    }
+}
+
+/**
+ * Delete a custom prompt
+ * @param {string} id - Prompt ID
+ */
+function deleteCustomPrompt(id) {
+    const context = SillyTavern.getContext();
+    const settings = context.extensionSettings[EXTENSION_NAME];
+
+    if (settings.customPrompts) {
+        settings.customPrompts = settings.customPrompts.filter(p => p.id !== id);
+        saveSettings();
+    }
+}
+
+/**
+ * Get a prompt template by ID
+ * @param {string} id - Prompt ID ('default' or custom ID)
+ * @param {string} charName - Character name (for default template)
+ * @returns {string} The prompt template
+ */
+function getPromptTemplate(id, charName) {
+    if (!id || id === 'default') {
+        return getDefaultPromptTemplate(charName);
+    }
+
+    const customPrompts = getCustomPrompts();
+    const prompt = customPrompts.find(p => p.id === id);
+    return prompt ? prompt.template : getDefaultPromptTemplate(charName);
 }
 
 /**
@@ -283,33 +401,40 @@ function generateImageListPrompt(charName) {
         return desc ? `- ${name}: ${desc}` : `- ${name}`;
     });
 
-    const prefix = charSettings.customPrefix || `Available images for ${charName} (use ::img ${charName} name:: to display):`;
+    // Get the selected prompt template
+    const template = getPromptTemplate(charSettings.selectedPromptId, charName);
+
+    // Replace {{char}} placeholder with character name
+    const prefix = template.replace(/\{\{char\}\}/gi, charName);
 
     return `[${prefix}\n${lines.join('\n')}]`;
 }
 
 /**
- * Replace ::img CharName imagename:: tags in text with actual images
+ * Replace ::img EntityName imagename:: tags in text with actual images
  * @param {string} text - Text to process
  * @returns {string} Text with image tags replaced
  */
 function replaceImageTags(text) {
     if (!text) return text;
 
-    // Match ::img CharName imagename:: pattern
-    const pattern = /::img\s+([^\s]+)\s+([^:]+)::/gi;
+    // Match ::img EntityName imagename:: pattern (space delimited)
+    const pattern = /::img\s+(\S+)\s+(\S+)::/gi;
 
-    return text.replace(pattern, (match, charName, imageName) => {
-        const imagePath = getImagePath(charName.trim(), imageName.trim());
+    return text.replace(pattern, (match, entityName, imageName) => {
+        entityName = resolveEntityName(entityName.trim());
+        imageName = imageName.trim();
+
+        const imagePath = getImagePath(entityName, imageName);
         if (imagePath) {
-            return `![${imageName.trim()}](/${imagePath})`;
+            return `![${imageName}](/${imagePath})`;
         }
         // If not found, try current character
         const currentChar = getCurrentCharacterName();
         if (currentChar) {
-            const currentPath = getImagePath(currentChar, imageName.trim());
+            const currentPath = getImagePath(currentChar, imageName);
             if (currentPath) {
-                return `![${imageName.trim()}](/${currentPath})`;
+                return `![${imageName}](/${currentPath})`;
             }
         }
         return match; // Leave unchanged if not found
@@ -323,8 +448,8 @@ function replaceImageTags(text) {
  */
 function stripImageTags(text) {
     if (!text) return text;
-    // Match ::img CharName imagename:: pattern and remove entirely
-    return text.replace(/::img\s+[^\s]+\s+[^:]+::/gi, '').replace(/\s{2,}/g, ' ').trim();
+    // Match ::img EntityName imagename:: pattern and remove entirely
+    return text.replace(/::img\s+\S+\s+\S+::/gi, '').replace(/\s{2,}/g, ' ').trim();
 }
 
 // Track processed messages to avoid reprocessing
@@ -343,7 +468,7 @@ function processMessageElement(mesElement) {
 
     const text = mesText.textContent || '';
 
-    // Match ::img CharName imagename:: pattern
+    // Match ::img EntityName imagename:: pattern (space delimited)
     const pattern = /::img\s+(\S+)\s+(\S+)::/gi;
 
     let match;
@@ -471,6 +596,7 @@ function openGallery() {
 
     const assignments = getCharacterAssignments(charName);
     const charSettings = getCharacterSettings(charName);
+    const customPrompts = getCustomPrompts();
 
     // Render gallery
     galleryRoot.render(
@@ -479,6 +605,7 @@ function openGallery() {
             onClose={closeGallery}
             assignments={assignments}
             characterSettings={charSettings}
+            customPrompts={customPrompts}
             onAssign={(name, path, description) => {
                 assignImage(charName, name, path, description);
                 // Re-render to update assignments display
@@ -494,6 +621,19 @@ function openGallery() {
             }}
             onSaveSettings={(settings) => {
                 saveCharacterSettings(charName, settings);
+                openGallery();
+            }}
+            onAddPrompt={(name, template) => {
+                const id = addCustomPrompt(name, template);
+                openGallery();
+                return id;
+            }}
+            onEditPrompt={(id, name, template) => {
+                updateCustomPrompt(id, name, template);
+                openGallery();
+            }}
+            onDeletePrompt={(id) => {
+                deleteCustomPrompt(id);
                 openGallery();
             }}
         />
@@ -520,6 +660,7 @@ function openPersonaGallery() {
 
     const assignments = getCharacterAssignments(personaName);
     const charSettings = getCharacterSettings(personaName);
+    const customPrompts = getCustomPrompts();
 
     // Render gallery
     galleryRoot.render(
@@ -528,6 +669,7 @@ function openPersonaGallery() {
             onClose={closeGallery}
             assignments={assignments}
             characterSettings={charSettings}
+            customPrompts={customPrompts}
             onAssign={(name, path, description) => {
                 assignImage(personaName, name, path, description);
                 openPersonaGallery();
@@ -542,6 +684,19 @@ function openPersonaGallery() {
             }}
             onSaveSettings={(settings) => {
                 saveCharacterSettings(personaName, settings);
+                openPersonaGallery();
+            }}
+            onAddPrompt={(name, template) => {
+                const id = addCustomPrompt(name, template);
+                openPersonaGallery();
+                return id;
+            }}
+            onEditPrompt={(id, name, template) => {
+                updateCustomPrompt(id, name, template);
+                openPersonaGallery();
+            }}
+            onDeletePrompt={(id) => {
+                deleteCustomPrompt(id);
                 openPersonaGallery();
             }}
             isPersona={true}
@@ -587,6 +742,7 @@ function openGroupGallery() {
     // Group assignments use the group name as the key
     const groupAssignments = getCharacterAssignments(group.name);
     const groupSettings = getCharacterSettings(group.name);
+    const customPrompts = getCustomPrompts();
 
     // Render group gallery
     galleryRoot.render(
@@ -597,6 +753,7 @@ function openGroupGallery() {
             memberAssignments={memberAssignments}
             groupAssignments={groupAssignments}
             groupSettings={groupSettings}
+            customPrompts={customPrompts}
             onClose={closeGallery}
             onAssignGroup={(name, path, description) => {
                 assignImage(group.name, name, path, description);
@@ -612,6 +769,19 @@ function openGroupGallery() {
             }}
             onSaveGroupSettings={(settings) => {
                 saveCharacterSettings(group.name, settings);
+                openGroupGallery();
+            }}
+            onAddPrompt={(name, template) => {
+                const id = addCustomPrompt(name, template);
+                openGroupGallery();
+                return id;
+            }}
+            onEditPrompt={(id, name, template) => {
+                updateCustomPrompt(id, name, template);
+                openGroupGallery();
+            }}
+            onDeletePrompt={(id) => {
+                deleteCustomPrompt(id);
                 openGroupGallery();
             }}
         />
@@ -686,47 +856,9 @@ function onChatChanged() {
     button.className = 'menu_button fa-solid fa-images interactable';
 
     if (inGroup) {
-        const group = getCurrentGroup();
-        console.log(`[${EXTENSION_NAME}] Group info:`, group);
-
-        if (!group) {
-            console.log(`[${EXTENSION_NAME}] No group found, will retry`);
-            setTimeout(onChatChanged, 500);
-            return;
-        }
-
-        button.title = 'Group Images';
-        button.setAttribute('data-i18n', '[title]Group Images');
-        button.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            openGroupGallery();
-        });
-
-        // For groups, place next to the send button area
-        // Try #rightSendForm first (common location for action buttons)
-        const rightSendForm = document.getElementById('rightSendForm');
-        const sendButSheld = document.getElementById('send_but_sheld');
-        const formSheld = document.getElementById('form_sheld');
-
-        console.log(`[${EXTENSION_NAME}] DOM elements - rightSendForm:`, !!rightSendForm, 'sendButSheld:', !!sendButSheld, 'formSheld:', !!formSheld);
-
-        if (rightSendForm) {
-            // Insert at the beginning of rightSendForm
-            rightSendForm.insertBefore(button, rightSendForm.firstChild);
-            console.log(`[${EXTENSION_NAME}] Gallery button added to #rightSendForm`);
-        } else if (sendButSheld) {
-            sendButSheld.insertBefore(button, sendButSheld.firstChild);
-            console.log(`[${EXTENSION_NAME}] Gallery button added to #send_but_sheld`);
-        } else if (formSheld) {
-            formSheld.appendChild(button);
-            console.log(`[${EXTENSION_NAME}] Gallery button added to #form_sheld`);
-        } else {
-            // Fallback: add as floating button near bottom right
-            button.style.cssText = 'position: fixed; bottom: 80px; right: 20px; z-index: 9999; padding: 10px 15px; background: var(--SmartThemeBlurTintColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 5px;';
-            document.body.appendChild(button);
-            console.log(`[${EXTENSION_NAME}] Gallery button added as floating button`);
-        }
+        // Group gallery is COMING SOON - don't show button for now
+        console.log(`[${EXTENSION_NAME}] Group chat detected - group gallery coming soon`);
+        return;
     } else {
         // Single character chat - find the export button
         const exportButton = document.getElementById('export_button');
@@ -773,7 +905,8 @@ function init() {
     if (context.eventSource && context.eventTypes) {
         // Regular chat changed
         context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => {
-            console.log(`[${EXTENSION_NAME}] CHAT_CHANGED event received`);
+            const ctx = SillyTavern.getContext();
+            console.log(`[${EXTENSION_NAME}] CHAT_CHANGED event received - groupId: ${ctx.groupId}, characterId: ${ctx.characterId}`);
             onChatChanged();
             setTimeout(processAllMessages, 500);
         });
