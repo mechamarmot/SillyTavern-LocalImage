@@ -1,0 +1,12 @@
+{
+    "display_name": "Local Image",
+    "loading_order": 1,
+    "requires": [],
+    "optional": [],
+    "js": "dist/index.js",
+    "css": "style.css",
+    "author": "mechamarmot",
+    "version": "1.0.0",
+    "homePage": "https://github.com/mechamarmot/SillyTavern-LocalImage",
+    "auto_update": true
+}
