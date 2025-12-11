@@ -352,29 +352,19 @@ function GroupGallery({
         setUploading(false);
         await fetchGroupImages();
 
-        // Prompt for name and description for each uploaded image
+        // Auto-assign filename (without extension) as both name and description
         for (const img of uploadedImages) {
-            let name = prompt(`Enter a name for "${img.filename}" (used in ::img ${groupName} name:: tag):`);
-            if (name && name.trim()) {
-                name = name.trim();
+            const nameFromFile = img.filename.replace(/\.[^/.]+$/, ''); // Remove extension
 
-                // Check for conflicts with member images
-                const conflicts = findMemberConflicts(name, memberAssignments);
-                if (conflicts.length > 0) {
-                    const proceed = confirm(
-                        `Warning: The name "${name}" is already used by: ${conflicts.join(', ')}\n\n` +
-                        `This is OK if intentional - use ::img ${groupName} ${name}:: for the group image, ` +
-                        `or ::img MemberName ${name}:: for member images.\n\n` +
-                        `Continue with this name?`
-                    );
-                    if (!proceed) continue;
-                }
-
-                const description = prompt(`Enter a description for "${name}" (helps AI choose when to use this image):`);
-                onAssignGroup(name, img.path, description?.trim() || '');
+            // Check for conflicts with member images
+            const conflicts = findMemberConflicts(nameFromFile, memberAssignments);
+            if (conflicts.length > 0) {
+                console.log(`[LocalImage] Name "${nameFromFile}" conflicts with members: ${conflicts.join(', ')} - user can rename via options menu`);
             }
+
+            onAssignGroup(nameFromFile, img.path, nameFromFile);
         }
-    }, [groupFolder, groupName, memberAssignments, fetchGroupImages, onAssignGroup]);
+    }, [groupFolder, memberAssignments, fetchGroupImages, onAssignGroup]);
 
     const handleFileSelect = useCallback((e) => {
         const files = Array.from(e.target.files);

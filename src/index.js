@@ -5,7 +5,6 @@ import GroupGallery from './GroupGallery';
 
 const EXTENSION_NAME = 'SillyTavern-LocalImage';
 const BUTTON_ID = 'local_image_button';
-const GROUP_BUTTON_ID = 'local_image_group_button';
 
 let galleryRoot = null;
 let galleryContainer = null;
@@ -95,7 +94,9 @@ function getCurrentPersonaName() {
  */
 function isGroupChat() {
     const context = SillyTavern.getContext();
-    return context.groupId !== null && context.groupId !== undefined;
+    const result = context.groupId !== null && context.groupId !== undefined;
+    console.log(`[${EXTENSION_NAME}] isGroupChat() - groupId: ${context.groupId}, result: ${result}`);
+    return result;
 }
 
 /**
@@ -617,60 +618,6 @@ function openGroupGallery() {
     );
 }
 
-/**
- * Add the gallery button to character panel
- */
-function addGalleryButton() {
-    // Remove existing button if any
-    const existingButton = document.getElementById(BUTTON_ID);
-    if (existingButton) {
-        existingButton.remove();
-    }
-
-    // Find the export button directly and insert next to it
-    const exportButton = document.getElementById('export_button');
-    if (!exportButton || !exportButton.parentElement) {
-        console.warn(`[${EXTENSION_NAME}] Export button not found, retrying...`);
-        // Retry after a short delay
-        setTimeout(addGalleryButton, 500);
-        return;
-    }
-
-    const buttonContainer = exportButton.parentElement;
-
-    // Create the button
-    const button = document.createElement('div');
-    button.id = BUTTON_ID;
-    button.className = 'menu_button fa-solid fa-images';
-    button.title = 'Local Images';
-    button.setAttribute('data-i18n', '[title]Local Images');
-
-    button.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        openGallery();
-    });
-
-    // Insert after the export button
-    if (exportButton.nextSibling) {
-        buttonContainer.insertBefore(button, exportButton.nextSibling);
-    } else {
-        buttonContainer.appendChild(button);
-    }
-
-    console.log(`[${EXTENSION_NAME}] Gallery button added to character panel`);
-}
-
-/**
- * Remove the gallery button
- */
-function removeGalleryButton() {
-    const button = document.getElementById(BUTTON_ID);
-    if (button) {
-        button.remove();
-    }
-}
-
 const PERSONA_BUTTON_ID = 'local_image_persona_button';
 
 /**
@@ -721,83 +668,93 @@ function removePersonaGalleryButton() {
 }
 
 /**
- * Add the gallery button for group chats
+ * Handle character/group selection change
  */
-function addGroupGalleryButton() {
-    // Remove existing button if any
-    const existingButton = document.getElementById(GROUP_BUTTON_ID);
+function onChatChanged() {
+    const inGroup = isGroupChat();
+    console.log(`[${EXTENSION_NAME}] onChatChanged called, isGroupChat: ${inGroup}`);
+
+    // Remove existing button
+    const existingButton = document.getElementById(BUTTON_ID);
     if (existingButton) {
         existingButton.remove();
     }
 
-    // Only add in group chats
-    if (!isGroupChat()) return;
-
-    // Find the group controls - look for the group actions area
-    const groupControls = document.querySelector('#rm_group_chats_block .inline-drawer-content');
-    if (!groupControls) {
-        // Try alternate location - top of group panel
-        const groupPanel = document.querySelector('#rm_group_chats_block');
-        if (!groupPanel) {
-            setTimeout(addGroupGalleryButton, 1000);
-            return;
-        }
-    }
-
-    // Find a good place to insert - after group name or in actions area
-    const groupActionsBlock = document.querySelector('.group_actions_block') ||
-                               document.querySelector('#rm_group_chats_block .inline-drawer-header');
-
-    if (!groupActionsBlock) {
-        setTimeout(addGroupGalleryButton, 1000);
-        return;
-    }
-
     // Create the button
     const button = document.createElement('div');
-    button.id = GROUP_BUTTON_ID;
-    button.className = 'menu_button fa-solid fa-images';
-    button.title = 'Group Images';
-    button.setAttribute('data-i18n', '[title]Group Images');
+    button.id = BUTTON_ID;
+    button.className = 'menu_button fa-solid fa-images interactable';
 
-    button.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        openGroupGallery();
-    });
+    if (inGroup) {
+        const group = getCurrentGroup();
+        console.log(`[${EXTENSION_NAME}] Group info:`, group);
 
-    // Add to group controls
-    groupActionsBlock.appendChild(button);
-
-    console.log(`[${EXTENSION_NAME}] Group gallery button added`);
-}
-
-/**
- * Remove the group gallery button
- */
-function removeGroupGalleryButton() {
-    const button = document.getElementById(GROUP_BUTTON_ID);
-    if (button) {
-        button.remove();
-    }
-}
-
-/**
- * Handle character/group selection change
- */
-function onChatChanged() {
-    // Handle group chats
-    if (isGroupChat()) {
-        removeGalleryButton(); // Remove single-character button
-        addGroupGalleryButton();
-    } else {
-        removeGroupGalleryButton();
-        const charName = getCurrentCharacterName();
-        if (charName) {
-            addGalleryButton();
-        } else {
-            removeGalleryButton();
+        if (!group) {
+            console.log(`[${EXTENSION_NAME}] No group found, will retry`);
+            setTimeout(onChatChanged, 500);
+            return;
         }
+
+        button.title = 'Group Images';
+        button.setAttribute('data-i18n', '[title]Group Images');
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openGroupGallery();
+        });
+
+        // For groups, place next to the send button area
+        // Try #rightSendForm first (common location for action buttons)
+        const rightSendForm = document.getElementById('rightSendForm');
+        const sendButSheld = document.getElementById('send_but_sheld');
+        const formSheld = document.getElementById('form_sheld');
+
+        console.log(`[${EXTENSION_NAME}] DOM elements - rightSendForm:`, !!rightSendForm, 'sendButSheld:', !!sendButSheld, 'formSheld:', !!formSheld);
+
+        if (rightSendForm) {
+            // Insert at the beginning of rightSendForm
+            rightSendForm.insertBefore(button, rightSendForm.firstChild);
+            console.log(`[${EXTENSION_NAME}] Gallery button added to #rightSendForm`);
+        } else if (sendButSheld) {
+            sendButSheld.insertBefore(button, sendButSheld.firstChild);
+            console.log(`[${EXTENSION_NAME}] Gallery button added to #send_but_sheld`);
+        } else if (formSheld) {
+            formSheld.appendChild(button);
+            console.log(`[${EXTENSION_NAME}] Gallery button added to #form_sheld`);
+        } else {
+            // Fallback: add as floating button near bottom right
+            button.style.cssText = 'position: fixed; bottom: 80px; right: 20px; z-index: 9999; padding: 10px 15px; background: var(--SmartThemeBlurTintColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 5px;';
+            document.body.appendChild(button);
+            console.log(`[${EXTENSION_NAME}] Gallery button added as floating button`);
+        }
+    } else {
+        // Single character chat - find the export button
+        const exportButton = document.getElementById('export_button');
+        if (!exportButton || !exportButton.parentElement) {
+            // Retry after a short delay
+            setTimeout(onChatChanged, 500);
+            return;
+        }
+
+        const charName = getCurrentCharacterName();
+        if (!charName) return; // No character selected
+
+        button.title = 'Local Images';
+        button.setAttribute('data-i18n', '[title]Local Images');
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openGallery();
+        });
+
+        // Insert after the export button
+        const buttonContainer = exportButton.parentElement;
+        if (exportButton.nextSibling) {
+            buttonContainer.insertBefore(button, exportButton.nextSibling);
+        } else {
+            buttonContainer.appendChild(button);
+        }
+        console.log(`[${EXTENSION_NAME}] Gallery button added (character mode)`);
     }
 }
 
@@ -811,13 +768,35 @@ function init() {
 
     const context = SillyTavern.getContext();
 
-    // Subscribe to character selection events
+    // Subscribe to chat events
+    console.log(`[${EXTENSION_NAME}] eventSource exists:`, !!context.eventSource, 'eventTypes exists:', !!context.eventTypes);
     if (context.eventSource && context.eventTypes) {
+        // Regular chat changed
         context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => {
+            console.log(`[${EXTENSION_NAME}] CHAT_CHANGED event received`);
             onChatChanged();
-            // Process existing messages when chat loads
             setTimeout(processAllMessages, 500);
         });
+
+        // Group chat specific event
+        if (context.eventTypes.GROUP_CHAT_CHANGED) {
+            context.eventSource.on(context.eventTypes.GROUP_CHAT_CHANGED, () => {
+                console.log(`[${EXTENSION_NAME}] GROUP_CHAT_CHANGED event received`);
+                onChatChanged();
+                setTimeout(processAllMessages, 500);
+            });
+        }
+
+        // Also try listening to chatLoaded if available
+        if (context.eventTypes.CHAT_LOADED) {
+            context.eventSource.on(context.eventTypes.CHAT_LOADED, () => {
+                console.log(`[${EXTENSION_NAME}] CHAT_LOADED event received`);
+                onChatChanged();
+                setTimeout(processAllMessages, 500);
+            });
+        }
+
+        console.log(`[${EXTENSION_NAME}] Event subscriptions registered`);
 
         // Also listen for message rendered events
         if (context.eventTypes.MESSAGE_RENDERED) {
@@ -947,6 +926,84 @@ function init() {
         // Always try to add persona button
         addPersonaGalleryButton();
     }, 100);
+
+    // Fallback: Use MutationObserver to detect chat changes
+    // This helps when CHAT_CHANGED event doesn't fire for our extension
+    let lastGroupId = null;
+    let lastCharacterId = null;
+
+    const checkAndUpdateButton = () => {
+        try {
+            const context = SillyTavern.getContext();
+            const currentGroupId = context.groupId;
+            const currentCharacterId = context.characterId;
+
+            // Check if context changed
+            if (currentGroupId !== lastGroupId || currentCharacterId !== lastCharacterId) {
+                console.log(`[${EXTENSION_NAME}] Context changed - groupId: ${lastGroupId} -> ${currentGroupId}, characterId: ${lastCharacterId} -> ${currentCharacterId}`);
+                lastGroupId = currentGroupId;
+                lastCharacterId = currentCharacterId;
+                onChatChanged();
+            } else {
+                // Also check if button is missing
+                const existingButton = document.getElementById(BUTTON_ID);
+                if (!existingButton) {
+                    const chatElement = document.getElementById('chat');
+                    if (chatElement && chatElement.children.length > 0) {
+                        console.log(`[${EXTENSION_NAME}] Button missing, re-adding`);
+                        onChatChanged();
+                    }
+                }
+            }
+        } catch (e) {
+            console.error(`[${EXTENSION_NAME}] Error in checkAndUpdateButton:`, e);
+        }
+    };
+
+    // Run immediately on init
+    console.log(`[${EXTENSION_NAME}] Setting up polling and observers`);
+    setTimeout(checkAndUpdateButton, 500);
+
+    const chatObserver = new MutationObserver((mutations) => {
+        checkAndUpdateButton();
+    });
+
+    // Observe the chat container for changes
+    const chatContainer = document.getElementById('chat');
+    if (chatContainer) {
+        chatObserver.observe(chatContainer, { childList: true, subtree: false });
+        console.log(`[${EXTENSION_NAME}] MutationObserver watching chat container`);
+    }
+
+    // Also observe the sheld container which changes when switching chat types
+    const sheldContainer = document.getElementById('sheld');
+    if (sheldContainer) {
+        chatObserver.observe(sheldContainer, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+        console.log(`[${EXTENSION_NAME}] MutationObserver watching sheld container`);
+    }
+
+    // Retry after DOM is more ready if containers weren't found
+    setTimeout(() => {
+        if (!chatContainer) {
+            const delayedChat = document.getElementById('chat');
+            if (delayedChat) {
+                chatObserver.observe(delayedChat, { childList: true, subtree: false });
+                console.log(`[${EXTENSION_NAME}] MutationObserver watching chat container (delayed)`);
+            }
+        }
+        if (!sheldContainer) {
+            const delayedSheld = document.getElementById('sheld');
+            if (delayedSheld) {
+                chatObserver.observe(delayedSheld, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+                console.log(`[${EXTENSION_NAME}] MutationObserver watching sheld container (delayed)`);
+            }
+        }
+        // Do an initial check
+        checkAndUpdateButton();
+    }, 1000);
+
+    // Also poll every 2 seconds as ultimate fallback
+    setInterval(checkAndUpdateButton, 2000);
 
     console.log(`[${EXTENSION_NAME}] Extension initialized`);
 }

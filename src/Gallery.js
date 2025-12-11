@@ -211,15 +211,12 @@ function Gallery({ characterName, onClose, assignments, characterSettings, onAss
         setUploading(false);
         await fetchImages();
 
-        // Prompt for name and description for each uploaded image
+        // Auto-assign filename (without extension) as both name and description
         for (const img of uploadedImages) {
-            const name = prompt(`Enter a name for "${img.filename}" (used in ::img ${characterName} name:: tag):`);
-            if (name && name.trim()) {
-                const description = prompt(`Enter a description for "${name}" (helps AI choose when to use this image):`);
-                onAssign(name.trim(), img.path, description?.trim() || '');
-            }
+            const nameFromFile = img.filename.replace(/\.[^/.]+$/, ''); // Remove extension
+            onAssign(nameFromFile, img.path, nameFromFile);
         }
-    }, [folder, fetchImages, onAssign, characterName]);
+    }, [folder, fetchImages, onAssign]);
 
     const handleFileSelect = useCallback((e) => {
         const files = Array.from(e.target.files);
