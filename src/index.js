@@ -267,6 +267,17 @@ function replaceImageTags(text) {
     });
 }
 
+/**
+ * Strip ::img:: tags from text (for hiding from AI)
+ * @param {string} text - Text to process
+ * @returns {string} Text with image tags removed
+ */
+function stripImageTags(text) {
+    if (!text) return text;
+    // Match ::img CharName imagename:: pattern and remove entirely
+    return text.replace(/::img\s+[^\s]+\s+[^:]+::/gi, '').replace(/\s{2,}/g, ' ').trim();
+}
+
 // Track processed messages to avoid reprocessing
 const processedMessages = new WeakSet();
 
@@ -697,6 +708,30 @@ function init() {
                     // Register our extension prompt
                     context.setExtensionPrompt(EXTENSION_NAME, prompt, 1, 0); // position 1 = after main prompt, depth 0
                 }
+            });
+        }
+
+        // Strip ::img:: tags from chat messages before sending to AI
+        // This ensures tags are hidden from the AI while still rendering in the UI
+        if (context.eventTypes.CHAT_COMPLETION_PROMPT_READY) {
+            context.eventSource.on(context.eventTypes.CHAT_COMPLETION_PROMPT_READY, (data) => {
+                if (!data || !data.messages) return;
+
+                // Strip ::img:: tags from all message content
+                for (const message of data.messages) {
+                    if (message.content && typeof message.content === 'string') {
+                        message.content = stripImageTags(message.content);
+                    }
+                    // Handle array content (for multimodal messages)
+                    if (Array.isArray(message.content)) {
+                        for (const part of message.content) {
+                            if (part.type === 'text' && part.text) {
+                                part.text = stripImageTags(part.text);
+                            }
+                        }
+                    }
+                }
+                console.log(`[${EXTENSION_NAME}] Stripped ::img:: tags from prompt`);
             });
         }
     }
