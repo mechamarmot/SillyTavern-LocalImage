@@ -43,7 +43,8 @@ LocalImage lets you upload your own images for each character and assign memorab
 - Assign a **name** and **description** to each image when prompted
 
 **For Your Persona:**
-- Look for the **gallery icon** on your user avatar (bottom-left of chat)
+- Open the **Persona Management** panel (click your name/avatar at top)
+- Click the **gallery icon** in the persona controls row
 - Same upload and assignment process as characters
 
 ### 2. Enable Automatic Prompt Injection (Recommended)
@@ -146,6 +147,20 @@ Use these naturally when the scene or mood matches.
 ```
 [Display character images using ::img CharName imagename:: to show locations, objects, or expressions when contextually appropriate. Don't overuse - max one image per response.]
 ```
+
+### Using {{user}} for Persona Images
+
+To let the AI show YOUR images (persona), add instructions like:
+
+**In Character Card or Author's Note:**
+```
+{{user}} can also display images using ::img {{user}} imagename:: tags.
+Available images for {{user}}:
+- my_room: the user's messy apartment
+- my_car: red sports car
+```
+
+The `{{user}}` macro will be replaced with your persona name. So if your persona is "John", the AI will output `::img John my_car::` which displays your image.
 
 ### Group Chats
 
