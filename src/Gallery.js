@@ -103,7 +103,7 @@ function SettingsPanel({ characterName, settings, onSave }) {
 /**
  * Gallery Modal Component
  */
-function Gallery({ characterName, onClose, assignments, characterSettings, onAssign, onUnassign, onUpdateDescription, onSaveSettings }) {
+function Gallery({ characterName, onClose, assignments, characterSettings, onAssign, onUnassign, onUpdateDescription, onSaveSettings, isPersona = false }) {
     const [images, setImages] = useState([]);
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
@@ -114,6 +114,8 @@ function Gallery({ characterName, onClose, assignments, characterSettings, onAss
     const fileInputRef = useRef(null);
 
     const folder = characterName;
+    const entityType = isPersona ? 'Persona' : 'Character';
+    const tagExample = isPersona ? `::img ${characterName} name::` : `::img ${characterName} name::`;
 
     /**
      * Fetch images from the server
@@ -383,7 +385,7 @@ function Gallery({ characterName, onClose, assignments, characterSettings, onAss
         >
             <div className="local-image-modal" onClick={() => setOptionsMenu(null)}>
                 <div className="local-image-modal-header">
-                    <h3>Local Images - {characterName}</h3>
+                    <h3>{isPersona ? 'My Images' : 'Local Images'} - {characterName}</h3>
                     <div className="local-image-modal-actions">
                         <button
                             className={`menu_button ${showSettings ? 'menu_button_active' : ''}`}

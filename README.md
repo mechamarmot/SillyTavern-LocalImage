@@ -9,11 +9,12 @@ LocalImage lets you upload your own images for each character and assign memorab
 ## Features
 
 - **Per-Character Image Galleries** - Each character has their own image library
+- **Persona/User Images Too** - Your persona can also have images (use `::img YourName pic::` or `::img {{user}} pic::`)
 - **Any Type of Image** - Locations (bedroom, throne room), objects (weapons, artifacts), outfits, scenes, expressions—anything!
 - **Custom Image Names & Descriptions** - Assign names like "bedroom", "enchanted_sword", or "armor" with descriptions to help the AI choose
 - **Automatic Prompt Injection** - Optionally inject your image list directly into the prompt (no manual character card editing needed!)
 - **AI-Driven Image Display** - The AI chooses which image to show based on context
-- **Simple Tag Syntax** - `::img CharacterName imagename::`
+- **Simple Tag Syntax** - `::img CharacterName imagename::` or `::img {{user}} imagename::`
 - **Works in Group Chats** - Each character can display their own images
 - **Mobile Friendly** - Access via SillyTavern's web interface on any device
 - **Drag & Drop Upload** - Easy image management
@@ -34,10 +35,16 @@ LocalImage lets you upload your own images for each character and assign memorab
 ## Quick Start
 
 ### 1. Upload Images
+
+**For Characters:**
 - Select a character
 - Click the **gallery icon** in the character panel (next to the export button)
 - Upload images via drag & drop or the upload button
 - Assign a **name** and **description** to each image when prompted
+
+**For Your Persona:**
+- Look for the **gallery icon** on your user avatar (bottom-left of chat)
+- Same upload and assignment process as characters
 
 ### 2. Enable Automatic Prompt Injection (Recommended)
 - In the gallery, click the **gear icon** to open settings
@@ -71,6 +78,8 @@ The tag is automatically replaced with the actual image in the chat.
 | `::img Seraphina sword::` | Shows Seraphina's sword |
 | `::img Alice throne_room::` | Shows Alice's throne room |
 | `::img {{char}} angry::` | Uses the current character's name (useful in character cards) |
+| `::img {{user}} photo::` | Shows the user/persona's image named "photo" |
+| `::img John my_car::` | Shows persona John's car image |
 
 ## Best Practices
 

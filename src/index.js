@@ -78,6 +78,37 @@ function getCurrentCharacterName() {
 }
 
 /**
+ * Get current persona/user name
+ * @returns {string|null} Persona name or null
+ */
+function getCurrentPersonaName() {
+    const context = SillyTavern.getContext();
+    // ST stores persona name in name1
+    return context.name1 || null;
+}
+
+/**
+ * Resolve entity name from tag (handles {{user}}, {{char}} macros)
+ * @param {string} entityName - Name from tag (could be actual name or macro)
+ * @returns {string} Resolved entity name
+ */
+function resolveEntityName(entityName) {
+    const lowerName = entityName.toLowerCase();
+
+    // Handle {{user}} macro
+    if (lowerName === '{{user}}' || lowerName === 'user') {
+        return getCurrentPersonaName() || entityName;
+    }
+
+    // Handle {{char}} macro
+    if (lowerName === '{{char}}' || lowerName === 'char') {
+        return getCurrentCharacterName() || entityName;
+    }
+
+    return entityName;
+}
+
+/**
  * Get assignments for a character
  * @param {string} charName - Character name
  * @returns {Object} Assignments object { name: { path, description } }
@@ -274,13 +305,25 @@ function processMessageElement(mesElement) {
 
     // Process each match - use textContent replacement to avoid HTML issues
     matches.forEach(m => {
-        console.log(`[${EXTENSION_NAME}] Processing tag: char="${m.charName}", name="${m.imageName}"`);
-        let imagePath = getImagePath(m.charName, m.imageName);
+        // Resolve entity name (handles {{user}}, {{char}} macros)
+        const resolvedName = resolveEntityName(m.charName);
+        console.log(`[${EXTENSION_NAME}] Processing tag: entity="${m.charName}" -> "${resolvedName}", name="${m.imageName}"`);
 
+        let imagePath = getImagePath(resolvedName, m.imageName);
+
+        // Fallback: try current character if not found
         if (!imagePath) {
             const currentChar = getCurrentCharacterName();
-            if (currentChar) {
+            if (currentChar && currentChar !== resolvedName) {
                 imagePath = getImagePath(currentChar, m.imageName);
+            }
+        }
+
+        // Fallback: try current persona if not found
+        if (!imagePath) {
+            const currentPersona = getCurrentPersonaName();
+            if (currentPersona && currentPersona !== resolvedName) {
+                imagePath = getImagePath(currentPersona, m.imageName);
             }
         }
 
@@ -398,6 +441,55 @@ function openGallery() {
 }
 
 /**
+ * Open the gallery modal for persona/user
+ */
+function openPersonaGallery() {
+    const personaName = getCurrentPersonaName();
+    if (!personaName) {
+        console.warn(`[${EXTENSION_NAME}] No persona selected`);
+        return;
+    }
+
+    // Create container if not exists
+    if (!galleryContainer) {
+        galleryContainer = document.createElement('div');
+        galleryContainer.id = 'local-image-gallery-root';
+        document.body.appendChild(galleryContainer);
+        galleryRoot = createRoot(galleryContainer);
+    }
+
+    const assignments = getCharacterAssignments(personaName);
+    const charSettings = getCharacterSettings(personaName);
+
+    // Render gallery
+    galleryRoot.render(
+        <Gallery
+            characterName={personaName}
+            onClose={closeGallery}
+            assignments={assignments}
+            characterSettings={charSettings}
+            onAssign={(name, path, description) => {
+                assignImage(personaName, name, path, description);
+                openPersonaGallery();
+            }}
+            onUnassign={(name) => {
+                unassignImage(personaName, name);
+                openPersonaGallery();
+            }}
+            onUpdateDescription={(name, description) => {
+                updateImageDescription(personaName, name, description);
+                openPersonaGallery();
+            }}
+            onSaveSettings={(settings) => {
+                saveCharacterSettings(personaName, settings);
+                openPersonaGallery();
+            }}
+            isPersona={true}
+        />
+    );
+}
+
+/**
  * Close the gallery modal
  */
 function closeGallery() {
@@ -455,6 +547,56 @@ function addGalleryButton() {
  */
 function removeGalleryButton() {
     const button = document.getElementById(BUTTON_ID);
+    if (button) {
+        button.remove();
+    }
+}
+
+const PERSONA_BUTTON_ID = 'local_image_persona_button';
+
+/**
+ * Add the gallery button for persona
+ */
+function addPersonaGalleryButton() {
+    // Remove existing button if any
+    const existingButton = document.getElementById(PERSONA_BUTTON_ID);
+    if (existingButton) {
+        existingButton.remove();
+    }
+
+    // Find the user avatar/persona area - look for user_avatar_block
+    const userAvatarBlock = document.getElementById('user_avatar_block');
+    if (!userAvatarBlock) {
+        // Retry after a short delay
+        setTimeout(addPersonaGalleryButton, 1000);
+        return;
+    }
+
+    // Create the button
+    const button = document.createElement('div');
+    button.id = PERSONA_BUTTON_ID;
+    button.className = 'menu_button fa-solid fa-images';
+    button.title = 'My Images (Persona)';
+    button.style.cssText = 'position: absolute; bottom: 5px; right: 5px; font-size: 14px; padding: 5px; z-index: 10;';
+
+    button.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openPersonaGallery();
+    });
+
+    // Add to user avatar block
+    userAvatarBlock.style.position = 'relative';
+    userAvatarBlock.appendChild(button);
+
+    console.log(`[${EXTENSION_NAME}] Persona gallery button added`);
+}
+
+/**
+ * Remove the persona gallery button
+ */
+function removePersonaGalleryButton() {
+    const button = document.getElementById(PERSONA_BUTTON_ID);
     if (button) {
         button.remove();
     }
@@ -565,6 +707,8 @@ function init() {
         if (getCurrentCharacterName()) {
             addGalleryButton();
         }
+        // Always try to add persona button
+        addPersonaGalleryButton();
     }, 100);
 
     console.log(`[${EXTENSION_NAME}] Extension initialized`);
