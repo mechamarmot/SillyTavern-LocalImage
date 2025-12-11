@@ -412,18 +412,23 @@ function generateImageListPrompt(charName) {
 
 /**
  * Replace ::img EntityName imagename:: tags in text with actual images
+ * Entity names can have spaces - imagename is the last word (no spaces allowed in imagename)
  * @param {string} text - Text to process
  * @returns {string} Text with image tags replaced
  */
 function replaceImageTags(text) {
     if (!text) return text;
 
-    // Match ::img EntityName imagename:: pattern (space delimited)
-    const pattern = /::img\s+(\S+)\s+(\S+)::/gi;
+    // Match ::img ... :: pattern, then split to get entity (all but last word) and imagename (last word)
+    const pattern = /::img\s+(.+?)::/gi;
 
-    return text.replace(pattern, (match, entityName, imageName) => {
-        entityName = resolveEntityName(entityName.trim());
-        imageName = imageName.trim();
+    return text.replace(pattern, (match, content) => {
+        const trimmed = content.trim();
+        const lastSpace = trimmed.lastIndexOf(' ');
+        if (lastSpace === -1) return match; // Need at least entity + imagename
+
+        const entityName = resolveEntityName(trimmed.substring(0, lastSpace).trim());
+        const imageName = trimmed.substring(lastSpace + 1).trim();
 
         const imagePath = getImagePath(entityName, imageName);
         if (imagePath) {
@@ -448,8 +453,8 @@ function replaceImageTags(text) {
  */
 function stripImageTags(text) {
     if (!text) return text;
-    // Match ::img EntityName imagename:: pattern and remove entirely
-    return text.replace(/::img\s+\S+\s+\S+::/gi, '').replace(/\s{2,}/g, ' ').trim();
+    // Match ::img ... :: pattern and remove entirely
+    return text.replace(/::img\s+.+?::/gi, '').replace(/\s{2,}/g, ' ').trim();
 }
 
 // Track processed messages to avoid reprocessing
@@ -468,16 +473,20 @@ function processMessageElement(mesElement) {
 
     const text = mesText.textContent || '';
 
-    // Match ::img EntityName imagename:: pattern (space delimited)
-    const pattern = /::img\s+(\S+)\s+(\S+)::/gi;
+    // Match ::img ... :: pattern, then split to get entity (all but last word) and imagename (last word)
+    const pattern = /::img\s+(.+?)::/gi;
 
     let match;
     const matches = [];
     while ((match = pattern.exec(text)) !== null) {
+        const trimmed = match[1].trim();
+        const lastSpace = trimmed.lastIndexOf(' ');
+        if (lastSpace === -1) continue; // Need at least entity + imagename
+
         matches.push({
             full: match[0],
-            charName: match[1].trim(),
-            imageName: match[2].trim()
+            charName: trimmed.substring(0, lastSpace).trim(),
+            imageName: trimmed.substring(lastSpace + 1).trim()
         });
     }
 
