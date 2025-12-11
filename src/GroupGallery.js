@@ -493,7 +493,8 @@ function GroupGallery({
 
         // Auto-assign filename (without extension) as both name and description
         for (const img of uploadedImages) {
-            const nameFromFile = img.filename.replace(/\.[^/.]+$/, ''); // Remove extension
+            // Remove extension and replace spaces with underscores
+            const nameFromFile = img.filename.replace(/\.[^/.]+$/, '').replace(/\s+/g, '_');
 
             // Check for conflicts with member images
             const conflicts = findMemberConflicts(nameFromFile, memberAssignments);
@@ -573,7 +574,8 @@ function GroupGallery({
 
         let name = prompt(`Enter a name for this image (used in ::img ${groupName} name:: tag):`, currentName || '');
         if (name && name.trim()) {
-            name = name.trim();
+            // Replace spaces with underscores (image names cannot have spaces)
+            name = name.trim().replace(/\s+/g, '_');
 
             // Check for conflicts with member images (only if name is changing)
             if (name !== currentName) {

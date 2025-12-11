@@ -347,7 +347,8 @@ function Gallery({ characterName, onClose, assignments, characterSettings, custo
 
         // Auto-assign filename (without extension) as both name and description
         for (const img of uploadedImages) {
-            const nameFromFile = img.filename.replace(/\.[^/.]+$/, ''); // Remove extension
+            // Remove extension and replace spaces with underscores
+            const nameFromFile = img.filename.replace(/\.[^/.]+$/, '').replace(/\s+/g, '_');
             onAssign(nameFromFile, img.path, nameFromFile);
         }
     }, [folder, fetchImages, onAssign]);
@@ -418,10 +419,12 @@ function Gallery({ characterName, onClose, assignments, characterSettings, custo
         const currentAssignment = currentName ? assignments[currentName] : null;
         const currentDesc = currentAssignment && typeof currentAssignment === 'object' ? currentAssignment.description : '';
 
-        const name = prompt(`Enter a name for this image (used in ::img ${characterName} name:: tag):`, currentName || '');
+        let name = prompt(`Enter a name for this image (used in ::img ${characterName} name:: tag):`, currentName || '');
         if (name && name.trim()) {
+            // Replace spaces with underscores (image names cannot have spaces)
+            name = name.trim().replace(/\s+/g, '_');
             // Remove old assignment if name changed
-            if (currentName && currentName !== name.trim()) {
+            if (currentName && currentName !== name) {
                 onUnassign(currentName);
             }
             // Prompt for description if new assignment
@@ -429,7 +432,7 @@ function Gallery({ characterName, onClose, assignments, characterSettings, custo
             if (!currentName) {
                 description = prompt('Enter a description (helps AI choose when to use this image):') || '';
             }
-            onAssign(name.trim(), image.src, description);
+            onAssign(name, image.src, description);
         }
     }, [assignments, onAssign, onUnassign]);
 
