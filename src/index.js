@@ -564,9 +564,9 @@ function addPersonaGalleryButton() {
         existingButton.remove();
     }
 
-    // Find the user avatar/persona area - look for user_avatar_block
-    const userAvatarBlock = document.getElementById('user_avatar_block');
-    if (!userAvatarBlock) {
+    // Find the persona controls buttons block (in persona management panel)
+    const personaButtonsBlock = document.querySelector('.persona_controls_buttons_block');
+    if (!personaButtonsBlock) {
         // Retry after a short delay
         setTimeout(addPersonaGalleryButton, 1000);
         return;
@@ -576,8 +576,8 @@ function addPersonaGalleryButton() {
     const button = document.createElement('div');
     button.id = PERSONA_BUTTON_ID;
     button.className = 'menu_button fa-solid fa-images';
-    button.title = 'My Images (Persona)';
-    button.style.cssText = 'position: absolute; bottom: 5px; right: 5px; font-size: 14px; padding: 5px; z-index: 10;';
+    button.title = 'Persona Images';
+    button.setAttribute('data-i18n', '[title]Persona Images');
 
     button.addEventListener('click', (e) => {
         e.preventDefault();
@@ -585,9 +585,8 @@ function addPersonaGalleryButton() {
         openPersonaGallery();
     });
 
-    // Add to user avatar block
-    userAvatarBlock.style.position = 'relative';
-    userAvatarBlock.appendChild(button);
+    // Add to persona controls
+    personaButtonsBlock.appendChild(button);
 
     console.log(`[${EXTENSION_NAME}] Persona gallery button added`);
 }
