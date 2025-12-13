@@ -1,6 +1,6 @@
 {
   "name": "sillytavern-localimage",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Local image handling extension for SillyTavern",
   "private": true,
   "dependencies": {

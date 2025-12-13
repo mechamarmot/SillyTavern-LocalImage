@@ -59,7 +59,18 @@ function ImageOptionsMenu({ image, position, onClose, onView, onAssign, onEditDe
 /**
  * Settings Panel Component
  */
-function SettingsPanel({ characterName, settings, customPrompts, assignments, onSave, onAddPrompt, onEditPrompt, onDeletePrompt }) {
+function SettingsPanel({ characterName }) {
+    return (
+        <div className="local-image-settings">
+            <div className="settings-row">
+                <span className="settings-coming-soon">Context injection coming soon!</span>
+            </div>
+        </div>
+    );
+}
+
+// Placeholder to maintain file structure
+function SettingsPanelPlaceholder({ characterName, settings, customPrompts, assignments, onSave, onAddPrompt, onEditPrompt, onDeletePrompt }) {
     const [injectPrompt, setInjectPrompt] = useState(settings.injectPrompt || false);
     const [selectedPromptId, setSelectedPromptId] = useState(settings.selectedPromptId || 'default');
     const [showPromptEditor, setShowPromptEditor] = useState(false);

@@ -218,6 +218,12 @@
     color: var(--SmartThemeBodyColor, #fff);
 }
 
+.settings-coming-soon {
+    color: var(--SmartThemeQuoteColor, #888);
+    font-style: italic;
+    padding: 10px 0;
+}
+
 .settings-checkbox input[type="checkbox"] {
     width: 18px;
     height: 18px;
