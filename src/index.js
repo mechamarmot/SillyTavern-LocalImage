@@ -5,9 +5,12 @@ import GroupGallery from './GroupGallery';
 
 const EXTENSION_NAME = 'SillyTavern-LocalImage';
 const BUTTON_ID = 'local_image_button';
+const FLOATING_BUTTON_ID = 'local_image_floating_button';
+const FLOATING_PANEL_ID = 'local_image_floating_panel';
 
 let galleryRoot = null;
 let galleryContainer = null;
+let floatingPanelExpanded = false;
 
 /**
  * Initialize extension settings
@@ -901,6 +904,251 @@ function onChatChanged() {
 
 
 /**
+ * Send a message as /sys (narrator) without triggering AI response
+ * @param {string} message - The message to send
+ */
+function sendAsNarrator(message) {
+    const textarea = document.getElementById('send_textarea');
+    const sendButton = document.getElementById('send_but');
+
+    if (!textarea || !sendButton) {
+        console.error(`[${EXTENSION_NAME}] Could not find send textarea or button`);
+        return;
+    }
+
+    // Set the message with /sys prefix
+    textarea.value = `/sys ${message}`;
+
+    // Trigger input event so ST knows the value changed
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+
+    // Click the send button
+    sendButton.click();
+
+    console.log(`[${EXTENSION_NAME}] Sent narrator message: ${message}`);
+}
+
+/**
+ * Get all entities (persona + characters) that have images assigned
+ * @returns {Array} Array of { name, type, images } objects
+ */
+function getEntitiesWithImages() {
+    const entities = [];
+    const settings = getSettings();
+
+    // Add persona if has images
+    const personaName = getCurrentPersonaName();
+    if (personaName) {
+        const personaAssignments = getCharacterAssignments(personaName);
+        const imageNames = Object.keys(personaAssignments);
+        if (imageNames.length > 0) {
+            entities.push({
+                name: personaName,
+                type: 'persona',
+                images: imageNames
+            });
+        }
+    }
+
+    // Add character(s)
+    if (isGroupChat()) {
+        const group = getCurrentGroup();
+        if (group) {
+            const memberNames = getGroupMemberNames(group.members);
+            for (const memberName of memberNames) {
+                const assignments = getCharacterAssignments(memberName);
+                const imageNames = Object.keys(assignments);
+                if (imageNames.length > 0) {
+                    entities.push({
+                        name: memberName,
+                        type: 'character',
+                        images: imageNames
+                    });
+                }
+            }
+        }
+    } else {
+        const charName = getCurrentCharacterName();
+        if (charName) {
+            const assignments = getCharacterAssignments(charName);
+            const imageNames = Object.keys(assignments);
+            if (imageNames.length > 0) {
+                entities.push({
+                    name: charName,
+                    type: 'character',
+                    images: imageNames
+                });
+            }
+        }
+    }
+
+    return entities;
+}
+
+/**
+ * Create the floating button element
+ */
+function createFloatingButton() {
+    // Remove existing if any
+    const existing = document.getElementById(FLOATING_BUTTON_ID);
+    if (existing) existing.remove();
+
+    const button = document.createElement('div');
+    button.id = FLOATING_BUTTON_ID;
+    button.className = 'local-image-floating-button';
+    button.innerHTML = '<i class="fa-solid fa-images"></i>';
+    button.title = 'Quick Image Send';
+
+    button.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleFloatingPanel();
+    });
+
+    document.body.appendChild(button);
+    // Position using top instead of bottom to avoid transform issues
+    const updatePosition = () => {
+        const viewportHeight = window.innerHeight;
+        button.style.top = (viewportHeight - 140) + 'px';
+        button.style.bottom = 'auto';
+    };
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    console.log(`[${EXTENSION_NAME}] Floating button created`);
+}
+
+/**
+ * Toggle the floating panel open/closed
+ */
+function toggleFloatingPanel() {
+    floatingPanelExpanded = !floatingPanelExpanded;
+
+    if (floatingPanelExpanded) {
+        createFloatingPanel();
+    } else {
+        closeFloatingPanel();
+    }
+}
+
+/**
+ * Create and show the floating panel
+ */
+function createFloatingPanel() {
+    // Remove existing if any
+    closeFloatingPanel();
+
+    const entities = getEntitiesWithImages();
+
+    // Don't show panel if no entities have images
+    if (entities.length === 0) {
+        floatingPanelExpanded = false;
+        console.log(`[${EXTENSION_NAME}] No entities with images, not showing panel`);
+        return;
+    }
+
+    const panel = document.createElement('div');
+    panel.id = FLOATING_PANEL_ID;
+    panel.className = 'local-image-floating-panel';
+
+    // Header with close button
+    const header = document.createElement('div');
+    header.className = 'floating-panel-header';
+    header.innerHTML = `
+        <span>Quick Image Send</span>
+        <button class="floating-panel-close" title="Close">
+            <i class="fa-solid fa-times"></i>
+        </button>
+    `;
+    panel.appendChild(header);
+
+    // Close button handler
+    header.querySelector('.floating-panel-close').addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        floatingPanelExpanded = false;
+        closeFloatingPanel();
+    });
+
+    // Content area with entity rows
+    const content = document.createElement('div');
+    content.className = 'floating-panel-content';
+
+    for (const entity of entities) {
+        const row = document.createElement('div');
+        row.className = 'floating-panel-row';
+
+        const label = document.createElement('span');
+        label.className = 'floating-panel-label';
+        label.textContent = entity.name;
+        if (entity.type === 'persona') {
+            label.innerHTML += ' <small>(you)</small>';
+        }
+        row.appendChild(label);
+
+        const controls = document.createElement('div');
+        controls.className = 'floating-panel-controls';
+
+        const select = document.createElement('select');
+        select.className = 'floating-panel-select';
+        select.dataset.entityName = entity.name;
+
+        for (const imageName of entity.images) {
+            const option = document.createElement('option');
+            option.value = imageName;
+            option.textContent = imageName;
+            select.appendChild(option);
+        }
+        controls.appendChild(select);
+
+        const sendBtn = document.createElement('button');
+        sendBtn.className = 'floating-panel-send';
+        sendBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i>';
+        sendBtn.title = 'Send image';
+        sendBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const selectedImage = select.value;
+            if (selectedImage) {
+                sendAsNarrator(`::img ${entity.name} ${selectedImage}::`);
+            }
+        });
+        controls.appendChild(sendBtn);
+
+        row.appendChild(controls);
+        content.appendChild(row);
+    }
+
+    panel.appendChild(content);
+    document.body.appendChild(panel);
+    // Position using top instead of bottom to avoid transform issues
+    const viewportHeight = window.innerHeight;
+    const panelHeight = Math.min(350, panel.offsetHeight);
+    panel.style.top = (viewportHeight - 140 - panelHeight - 10) + 'px';
+    panel.style.bottom = 'auto';
+
+    console.log(`[${EXTENSION_NAME}] Floating panel created with ${entities.length} entities`);
+}
+
+/**
+ * Close and remove the floating panel
+ */
+function closeFloatingPanel() {
+    const panel = document.getElementById(FLOATING_PANEL_ID);
+    if (panel) {
+        panel.remove();
+    }
+}
+
+/**
+ * Update the floating panel content (called on chat change)
+ */
+function updateFloatingPanel() {
+    if (floatingPanelExpanded) {
+        createFloatingPanel();
+    }
+}
+
+/**
  * Initialize the extension
  */
 function init() {
@@ -917,6 +1165,7 @@ function init() {
             const ctx = SillyTavern.getContext();
             console.log(`[${EXTENSION_NAME}] CHAT_CHANGED event received - groupId: ${ctx.groupId}, characterId: ${ctx.characterId}`);
             onChatChanged();
+            updateFloatingPanel();
             setTimeout(processAllMessages, 500);
         });
 
@@ -925,6 +1174,7 @@ function init() {
             context.eventSource.on(context.eventTypes.GROUP_CHAT_CHANGED, () => {
                 console.log(`[${EXTENSION_NAME}] GROUP_CHAT_CHANGED event received`);
                 onChatChanged();
+                updateFloatingPanel();
                 setTimeout(processAllMessages, 500);
             });
         }
@@ -934,6 +1184,7 @@ function init() {
             context.eventSource.on(context.eventTypes.CHAT_LOADED, () => {
                 console.log(`[${EXTENSION_NAME}] CHAT_LOADED event received`);
                 onChatChanged();
+                updateFloatingPanel();
                 setTimeout(processAllMessages, 500);
             });
         }
@@ -1067,6 +1318,8 @@ function init() {
         onChatChanged();
         // Always try to add persona button
         addPersonaGalleryButton();
+        // Create floating button for quick image send
+        createFloatingButton();
     }, 100);
 
     // Fallback: Use MutationObserver to detect chat changes
